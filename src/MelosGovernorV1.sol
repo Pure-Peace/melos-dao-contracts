@@ -217,7 +217,7 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
             ProposalData({
                 id: proposal.id,
                 title: proposal.title,
-                description: proposal.title,
+                description: proposal.description,
                 pdfUri: proposal.pdfUri,
                 forumUri: proposal.forumUri,
                 proposer: proposal.proposer,
