@@ -42,3 +42,26 @@ export async function setupUsersWithNames<T extends { [contractName: string]: Co
   }
   return output;
 }
+
+export async function getBlockNumber(): Promise<number> {
+  return await ethers.provider.getBlockNumber()
+}
+
+export async function getBlock() {
+  return await ethers.provider.getBlock(await getBlockNumber());
+}
+
+export async function nextBlock() {
+  await ethers.provider.send("evm_mine", []);
+}
+
+
+export async function setBlockTime(n: number | string) {
+  await ethers.provider.send("evm_setNextBlockTimestamp", [n]);
+  await nextBlock()
+}
+
+export async function incBlockTime(n: number | string) {
+  await ethers.provider.send("evm_increaseTime", [n]);
+  await nextBlock()
+}
