@@ -17,6 +17,9 @@ const config: { [key: string]: DeployConfig } = {
   },
   rinkeby: {
 
+  },
+  bsc: {
+    melosToken: 'MELOS_TOKEN_ADDRESS'
   }
 };
 
