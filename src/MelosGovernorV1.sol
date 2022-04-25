@@ -2,8 +2,6 @@
 pragma solidity ^0.8.7;
 
 import {IGovernorUpgradeable} from "@openzeppelin/contracts-upgradeable/governance/IGovernorUpgradeable.sol";
-import {IVotesUpgradeable} from "@openzeppelin/contracts-upgradeable/governance/utils/IVotesUpgradeable.sol";
-
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {EIP712Upgradeable, ECDSAUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgradeable.sol";
@@ -12,11 +10,20 @@ import {SafeCastUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/mat
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {TimersUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/TimersUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 
-contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable, EIP712Upgradeable {
+import {IVoteMelos} from "./IVoteMelos.sol";
+
+contract MelosGovernorV1 is
+    Initializable,
+    ContextUpgradeable,
+    ERC165Upgradeable,
+    EIP712Upgradeable,
+    OwnableUpgradeable
+{
     using SafeCastUpgradeable for uint256;
     using TimersUpgradeable for TimersUpgradeable.BlockNumber;
 
@@ -40,12 +47,24 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
         Executed
     }
 
+    enum ProposalType {
+        Creation,
+        Organization,
+        Expansion
+    }
+
+    enum MemberLevel {
+        None,
+        Basic,
+        Fun,
+        DJ,
+        Viva,
+        Maestro
+    }
+
     struct Proposal {
+        ProposalType typ;
         uint256 id;
-        string title;
-        string description;
-        string pdfUri;
-        string forumUri;
         address proposer;
         TimersUpgradeable.BlockNumber voteStart;
         TimersUpgradeable.BlockNumber voteEnd;
@@ -56,33 +75,23 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
         bytes[] calldatas;
     }
 
-    struct ProposalData {
-        uint256 id;
-        string title;
-        string description;
-        string pdfUri;
-        string forumUri;
-        address proposer;
-        uint256 snapshot;
-        uint256 deadline;
-        ProposalState state;
-        address[] targets;
-        uint256[] values;
-        bytes[] calldatas;
-    }
-
     struct ProposalVote {
+        uint256 voters;
         uint256 againstVotes;
         uint256 forVotes;
         uint256 abstainVotes;
         mapping(address => bool) hasVoted;
     }
 
+    uint256[] private LEVEL_THERSHOLD;
+    uint256[][] private WEIGHTS_WITH_LEVEL_PROPOSAL;
+    uint256[] private QUORUM_NUMERATORS;
+
     bytes32 public constant BALLOT_TYPEHASH = keccak256("Ballot(uint256 proposalId,uint8 support)");
 
     string private _name;
 
-    mapping(uint256 => Proposal) private _proposals;
+    mapping(uint256 => Proposal) public proposals;
 
     uint256 public proposalCount;
     mapping(uint256 => uint256) private _proposalsIdByIndex;
@@ -96,14 +105,21 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
 
     mapping(uint256 => ProposalVote) private _proposalVotes;
 
-    IVotesUpgradeable public token;
-
-    uint256 private _quorumNumerator;
+    IVoteMelos public vMelos;
 
     /**
      * @dev Emitted when a proposal is created.
      */
-    event ProposalCreated(uint256 proposalId, address proposer, uint256 startBlock, uint256 endBlock);
+    event ProposalCreated(
+        uint256 index,
+        uint256 proposalId,
+        ProposalType proposalType,
+        address proposer,
+        uint256 startBlock,
+        uint256 endBlock,
+        string title,
+        string data
+    );
 
     /**
      * @dev Emitted when a proposal is canceled.
@@ -125,7 +141,14 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
     event VotingDelaySet(uint256 oldVotingDelay, uint256 newVotingDelay);
     event VotingPeriodSet(uint256 oldVotingPeriod, uint256 newVotingPeriod);
     event ProposalThresholdSet(uint256 oldProposalThreshold, uint256 newProposalThreshold);
-    event QuorumNumeratorUpdated(uint256 oldQuorumNumerator, uint256 newQuorumNumerator);
+    event QuorumNumeratorUpdated(ProposalType proposalType, uint256 oldQuorumNumerator, uint256 newQuorumNumerator);
+    event LevelThersholdUpdated(MemberLevel level, uint256 oldThershold, uint256 newThershold);
+    event WeightsWithLevelProposalUpdated(
+        MemberLevel level,
+        ProposalType proposalType,
+        uint256 oldWeight,
+        uint256 newWeight
+    );
 
     /**
      * @dev Restrict access of functions to the governance executor, which may be the Governor itself or a timelock
@@ -137,23 +160,22 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
         _;
     }
 
-    constructor() initializer {}
-
-    function initialize(IVotesUpgradeable _votesToken) public initializer {
+    function initialize(IVoteMelos _voteMelos) public initializer {
         __Governor_init("MelosGovernor");
         _setVotingDelay(
-            10 /* 10 block */
+            57600 /* 57600 block: 2 days * 86400 / 3s (block time) */
         );
         _setVotingPeriod(
-            23 /* 300 second */
+            86400 /* 86400 block: 3 days * 86400 / 3s (block time) */
         );
         _setProposalThreshold(
-            10e18 /* 10 vote melos threshold */
+            300_000 * 10**18 /* 300,000 vMelos threshold */
         );
-        token = _votesToken;
-        _updateQuorumNumerator(
-            30 /* 30% */
-        );
+        vMelos = _voteMelos;
+
+        LEVEL_THERSHOLD = [0, 1000, 300000, 900000, 2000000, 5000000];
+        WEIGHTS_WITH_LEVEL_PROPOSAL = [[400, 350, 320], [1350, 1150, 1000], [3500, 2600, 2300], [10000, 6800, 5900]];
+        QUORUM_NUMERATORS = [30, 20, 10];
     }
 
     /**
@@ -169,150 +191,71 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
     }
 
     function proposalByIndex(uint256 proposalIndex) public view returns (Proposal memory) {
-        return _proposals[_proposalsIdByIndex[proposalIndex]];
+        return proposals[_proposalsIdByIndex[proposalIndex]];
     }
 
     function draftProposalByIndex(uint256 draftProposalIndex) public view returns (Proposal memory) {
-        return _proposals[_proposalsIdByIndex[draftProposalIndex]];
-    }
-
-    function getProposalList(
-        uint256 start,
-        uint256 count,
-        bool reverse,
-        bool draft
-    ) external view returns (ProposalData[] memory, uint256) {
-        uint256 total = draft ? draftProposalCount : proposalCount;
-        if (start > total) {
-            return (new ProposalData[](0), total);
-        }
-        uint256 end;
-        if (reverse) {
-            start = total - start;
-            end = (start > count) ? (start - count) : 0;
-            count = start - end;
-        } else {
-            end = (start + count) > total ? total : (start + count);
-            count = end - start;
-        }
-        ProposalData[] memory tmp = new ProposalData[](count);
-        uint256 tmpIndex = 0;
-        if (reverse) {
-            while ((tmpIndex < count) && start > 0) {
-                start--;
-                tmp[tmpIndex++] = draft ? getDraftProposalDataByIndex(start) : getProposalDataByIndex(start);
-            }
-        } else {
-            while ((tmpIndex < count) && start < total) {
-                start++;
-                tmp[tmpIndex++] = draft ? getDraftProposalDataByIndex(start + 1) : getProposalDataByIndex(start + 1);
-            }
-        }
-        return (tmp, total);
-    }
-
-    function getProposalData(uint256 _proposalId) public view returns (ProposalData memory) {
-        Proposal memory proposal = _proposals[_proposalId];
-        return
-            ProposalData({
-                id: proposal.id,
-                title: proposal.title,
-                description: proposal.title,
-                pdfUri: proposal.pdfUri,
-                forumUri: proposal.forumUri,
-                proposer: proposal.proposer,
-                snapshot: proposal.voteStart.getDeadline(),
-                deadline: proposal.voteEnd.getDeadline(),
-                state: _state(proposal),
-                targets: proposal.targets,
-                values: proposal.values,
-                calldatas: proposal.calldatas
-            });
-    }
-
-    function getProposalDataByIndex(uint256 proposalIndex) public view returns (ProposalData memory) {
-        return getProposalData(_proposalsIdByIndex[proposalIndex]);
-    }
-
-    function getDraftProposalDataByIndex(uint256 draftProposalIndex) public view returns (ProposalData memory) {
-        return getProposalData(_draftProposalsIdByIndex[draftProposalIndex]);
+        return proposals[_proposalsIdByIndex[draftProposalIndex]];
     }
 
     /**
      * @dev Returns the current quorum numerator. See {quorumDenominator}.
      */
-    function quorumNumerator() public view virtual returns (uint256) {
-        return _quorumNumerator;
+    function quorumNumerator(ProposalType proposalType) public view returns (uint256) {
+        return QUORUM_NUMERATORS[uint256(proposalType)];
     }
 
     /**
      * @dev Returns the quorum denominator. Defaults to 100, but may be overridden.
      */
-    function quorumDenominator() public view virtual returns (uint256) {
+    function quorumDenominator() public pure returns (uint256) {
         return 100;
     }
 
     /**
-     * @dev Returns the quorum for a block number, in terms of number of votes: `supply * numerator / denominator`.
+     * @dev Returns the quorum for a block number, in terms of number of votes: `voters * numerator / denominator`.
      */
-    function quorum(uint256 blockNumber) public view virtual returns (uint256) {
-        return (token.getPastTotalSupply(blockNumber) * quorumNumerator()) / quorumDenominator();
+    function quorum(ProposalType proposalType, uint256 blockNumber) public view returns (uint256) {
+        return (vMelos.getPastVoters(blockNumber) * quorumNumerator(proposalType)) / quorumDenominator();
     }
 
     /**
-     * @dev Changes the quorum numerator.
-     *
-     * Emits a {QuorumNumeratorUpdated} event.
-     *
-     * Requirements:
-     *
-     * - Must be called through a governance proposal.
-     * - New numerator must be smaller or equal to the denominator.
+     * Read the voting weight from the vMelos's built in snapshot mechanism (see {IGovernor-getVotes}).
      */
-    function updateQuorumNumerator(uint256 newQuorumNumerator) external virtual onlyGovernance {
-        _updateQuorumNumerator(newQuorumNumerator);
+    function getVotes(address account, uint256 blockNumber) public view returns (uint256) {
+        return vMelos.getPastVotes(account, blockNumber);
     }
 
-    /**
-     * @dev Changes the quorum numerator.
-     *
-     * Emits a {QuorumNumeratorUpdated} event.
-     *
-     * Requirements:
-     *
-     * - New numerator must be smaller or equal to the denominator.
-     */
-    function _updateQuorumNumerator(uint256 newQuorumNumerator) internal virtual {
-        require(
-            newQuorumNumerator <= quorumDenominator(),
-            "GovernorVotesQuorumFraction: quorumNumerator over quorumDenominator"
-        );
-
-        uint256 oldQuorumNumerator = _quorumNumerator;
-        _quorumNumerator = newQuorumNumerator;
-
-        emit QuorumNumeratorUpdated(oldQuorumNumerator, newQuorumNumerator);
+    function memberLevelWeights(MemberLevel level, ProposalType proposalType) public view returns (uint256) {
+        if (level == MemberLevel.None) {
+            return 0;
+        } else if (level == MemberLevel.Basic) {
+            return 1 ether;
+        } else {
+            return WEIGHTS_WITH_LEVEL_PROPOSAL[uint8(level) - 2][uint8(proposalType)] * 10**18;
+        }
     }
 
-    /**
-     * Read the voting weight from the token's built in snapshot mechanism (see {IGovernor-getVotes}).
-     */
-    function getVotes(address account, uint256 blockNumber) public view virtual returns (uint256) {
-        return token.getPastVotes(account, blockNumber);
+    function getLevel(address account, uint256 blockNumber) public view returns (MemberLevel) {
+        uint256 weight = getVotes(account, blockNumber);
+        for (uint256 i = LEVEL_THERSHOLD.length - 1; i >= 0; i--) {
+            if (weight >= (LEVEL_THERSHOLD[i] * 10**18)) return MemberLevel(i);
+        }
+        return MemberLevel.None;
     }
 
-    /**
-     * @dev See {IGovernor-COUNTING_MODE}.
-     */
-    // solhint-disable-next-line func-name-mixedcase
-    function COUNTING_MODE() public pure virtual returns (string memory) {
-        return "support=bravo&quorum=for,abstain";
+    function getVotesWithProposalType(
+        ProposalType proposalType,
+        address account,
+        uint256 blockNumber
+    ) public view returns (uint256) {
+        return memberLevelWeights(getLevel(account, blockNumber), proposalType);
     }
 
     /**
      * @dev See {IGovernor-hasVoted}.
      */
-    function hasVoted(uint256 proposalId, address account) public view virtual returns (bool) {
+    function hasVoted(uint256 proposalId, address account) public view returns (bool) {
         return _proposalVotes[proposalId].hasVoted[account];
     }
 
@@ -322,7 +265,6 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
     function proposalVotes(uint256 proposalId)
         public
         view
-        virtual
         returns (
             uint256 againstVotes,
             uint256 forVotes,
@@ -339,7 +281,9 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
     function _quorumReached(uint256 proposalId) internal view returns (bool) {
         ProposalVote storage proposalvote = _proposalVotes[proposalId];
 
-        return quorum(proposalSnapshot(proposalId)) <= proposalvote.forVotes + proposalvote.abstainVotes;
+        return
+            quorum(proposals[proposalId].typ, proposalSnapshot(proposalId)) <=
+            proposalvote.forVotes + proposalvote.abstainVotes + proposalvote.againstVotes;
     }
 
     /**
@@ -349,31 +293,6 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
         ProposalVote storage proposalvote = _proposalVotes[proposalId];
 
         return proposalvote.forVotes > proposalvote.againstVotes;
-    }
-
-    /**
-     * @dev See {Governor-_countVote}. In this module, the support follows the `VoteType` enum (from Governor Bravo).
-     */
-    function _countVote(
-        uint256 proposalId,
-        address account,
-        uint8 support,
-        uint256 weight
-    ) internal {
-        ProposalVote storage proposalvote = _proposalVotes[proposalId];
-
-        require(!proposalvote.hasVoted[account], "GovernorVotingSimple: vote already cast");
-        proposalvote.hasVoted[account] = true;
-
-        if (support == uint8(VoteType.Against)) {
-            proposalvote.againstVotes += weight;
-        } else if (support == uint8(VoteType.For)) {
-            proposalvote.forVotes += weight;
-        } else if (support == uint8(VoteType.Abstain)) {
-            proposalvote.abstainVotes += weight;
-        } else {
-            revert("GovernorVotingSimple: invalid value for enum VoteType");
-        }
     }
 
     /**
@@ -398,97 +317,31 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
     }
 
     /**
-     * @dev Update the voting delay. This operation can only be performed through a governance proposal.
-     *
-     * Emits a {VotingDelaySet} event.
-     */
-    function setVotingDelay(uint256 newVotingDelay) public virtual onlyGovernance {
-        _setVotingDelay(newVotingDelay);
-    }
-
-    /**
-     * @dev Update the voting period. This operation can only be performed through a governance proposal.
-     *
-     * Emits a {VotingPeriodSet} event.
-     */
-    function setVotingPeriod(uint256 newVotingPeriod) public virtual onlyGovernance {
-        _setVotingPeriod(newVotingPeriod);
-    }
-
-    /**
-     * @dev Update the proposal threshold. This operation can only be performed through a governance proposal.
-     *
-     * Emits a {ProposalThresholdSet} event.
-     */
-    function setProposalThreshold(uint256 newProposalThreshold) public virtual onlyGovernance {
-        _setProposalThreshold(newProposalThreshold);
-    }
-
-    /**
-     * @dev Internal setter for the voting delay.
-     *
-     * Emits a {VotingDelaySet} event.
-     */
-    function _setVotingDelay(uint256 newVotingDelay) internal virtual {
-        emit VotingDelaySet(_votingDelay, newVotingDelay);
-        _votingDelay = newVotingDelay;
-    }
-
-    /**
-     * @dev Internal setter for the voting period.
-     *
-     * Emits a {VotingPeriodSet} event.
-     */
-    function _setVotingPeriod(uint256 newVotingPeriod) internal virtual {
-        // voting period must be at least one block long
-        require(newVotingPeriod > 0, "GovernorSettings: voting period too low");
-        emit VotingPeriodSet(_votingPeriod, newVotingPeriod);
-        _votingPeriod = newVotingPeriod;
-    }
-
-    /**
-     * @dev Internal setter for the proposal threshold.
-     *
-     * Emits a {ProposalThresholdSet} event.
-     */
-    function _setProposalThreshold(uint256 newProposalThreshold) internal virtual {
-        emit ProposalThresholdSet(_proposalThreshold, newProposalThreshold);
-        _proposalThreshold = newProposalThreshold;
-    }
-
-    /**
-     * @dev Function to receive ETH that will be handled by the governor (disabled if executor is a third party contract)
-     */
-    receive() external payable virtual {
-        require(_executor() == address(this));
-    }
-
-    /**
      * @dev See {IERC165-supportsInterface}.
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165Upgradeable) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC165Upgradeable) returns (bool) {
         return interfaceId == type(IGovernorUpgradeable).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /**
      * @dev See {IGovernor-name}.
      */
-    function name() public view virtual returns (string memory) {
+    function name() external view returns (string memory) {
         return _name;
     }
 
     /**
      * @dev See {IGovernor-version}.
      */
-    function version() public view virtual returns (string memory) {
+    function version() public pure returns (string memory) {
         return "1";
     }
 
     /**
      * @dev See {IGovernor-state}.
      */
-    function state(uint256 proposalId) public view virtual returns (ProposalState) {
-        return _state(_proposals[proposalId]);
+    function state(uint256 proposalId) public view returns (ProposalState) {
+        return _state(proposals[proposalId]);
     }
 
     function _state(Proposal memory proposal) private view returns (ProposalState) {
@@ -526,116 +379,81 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
     /**
      * @dev See {IGovernor-proposalSnapshot}.
      */
-    function proposalSnapshot(uint256 proposalId) public view virtual returns (uint256) {
-        return _proposals[proposalId].voteStart.getDeadline();
+    function proposalSnapshot(uint256 proposalId) public view returns (uint256) {
+        return proposals[proposalId].voteStart.getDeadline();
     }
 
     /**
      * @dev See {IGovernor-proposalDeadline}.
      */
-    function proposalDeadline(uint256 proposalId) public view virtual returns (uint256) {
-        return _proposals[proposalId].voteEnd.getDeadline();
+    function proposalDeadline(uint256 proposalId) public view returns (uint256) {
+        return proposals[proposalId].voteEnd.getDeadline();
     }
 
     /**
-     * @dev See {IGovernor-propose}.
+     * @dev Address through which the governor executes action. Will be overloaded by module that execute actions
+     * through another contract such as a timelock.
      */
-    function propose(
-        string memory title,
-        string memory description,
-        string memory pdfUri,
-        string memory forumUri,
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas
-    ) public virtual returns (uint256) {
-        require(
-            getVotes(msg.sender, block.number - 1) >= proposalThreshold(),
-            "Governor: proposer votes below proposal threshold"
-        );
-
-        uint256 proposalId = uint256(keccak256(abi.encode(targets, values, calldatas, keccak256(bytes(description)))));
-
-        require(targets.length == values.length, "Governor: invalid proposal length");
-        require(targets.length == calldatas.length, "Governor: invalid proposal length");
-        require(targets.length > 0, "Governor: empty proposal and not a draft");
-
-        require(_proposals[proposalId].voteStart.isUnset(), "Governor: proposal already exists");
-
-        _proposalsIdByIndex[proposalCount++] = proposalId;
-
-        uint64 snapshot = block.number.toUint64() + votingDelay().toUint64();
-        uint64 deadline = snapshot + votingPeriod().toUint64();
-
-        Proposal storage proposal = _proposals[proposalId];
-
-        proposal.id = proposalId;
-        proposal.proposer = msg.sender;
-        proposal.title = title;
-        proposal.description = description;
-        proposal.pdfUri = pdfUri;
-        proposal.forumUri = forumUri;
-        proposal.voteStart.setDeadline(snapshot);
-        proposal.voteEnd.setDeadline(deadline);
-        proposal.targets = targets;
-        proposal.values = values;
-        proposal.calldatas = calldatas;
-
-        emit ProposalCreated(proposalId, _msgSender(), snapshot, deadline);
-
-        return proposalId;
-    }
-
-    function proposeDraft(
-        string memory title,
-        string memory description,
-        string memory pdfUri,
-        string memory forumUri
-    ) public virtual returns (uint256) {
-        require(
-            getVotes(msg.sender, block.number - 1) >= proposalThreshold(),
-            "Governor: proposer votes below proposal threshold"
-        );
-
-        uint256 draftProposalId = uint256(keccak256(bytes(abi.encode("draft", description))));
-
-        Proposal storage draftProposal = _proposals[draftProposalId];
-        require(draftProposal.voteStart.isUnset(), "Governor: proposal already exists");
-
-        _draftProposalsIdByIndex[draftProposalCount++] = draftProposalId;
-
-        uint64 snapshot = block.number.toUint64() + votingDelay().toUint64();
-        uint64 deadline = snapshot + votingPeriod().toUint64();
-
-        draftProposal.id = draftProposalId;
-        draftProposal.proposer = msg.sender;
-        draftProposal.title = title;
-        draftProposal.description = description;
-        draftProposal.pdfUri = pdfUri;
-        draftProposal.forumUri = forumUri;
-        draftProposal.voteStart.setDeadline(snapshot);
-        draftProposal.voteEnd.setDeadline(deadline);
-
-        emit ProposalCreated(draftProposalId, _msgSender(), snapshot, deadline);
-        return draftProposalId;
+    function _executor() internal view returns (address) {
+        return address(this);
     }
 
     /**
-     * @dev See {IGovernor-execute}.
+     * @dev See {Governor-_countVote}. In this module, the support follows the `VoteType` enum (from Governor Bravo).
      */
-    function execute(uint256 proposalId) public payable virtual returns (uint256) {
-        ProposalState status = state(proposalId);
-        require(
-            status == ProposalState.Succeeded || status == ProposalState.Queued,
-            "Governor: proposal not successful"
-        );
-        _proposals[proposalId].executed = true;
+    function _countVote(
+        uint256 proposalId,
+        address account,
+        uint8 support,
+        uint256 weight
+    ) internal {
+        ProposalVote storage proposalvote = _proposalVotes[proposalId];
 
-        emit ProposalExecuted(proposalId);
+        require(!proposalvote.hasVoted[account], "GovernorVotingSimple: vote already cast");
+        proposalvote.hasVoted[account] = true;
+        proposalvote.voters++;
 
-        _execute(_proposals[proposalId].targets, _proposals[proposalId].values, _proposals[proposalId].calldatas);
+        if (support == uint8(VoteType.Against)) {
+            proposalvote.againstVotes += weight;
+        } else if (support == uint8(VoteType.For)) {
+            proposalvote.forVotes += weight;
+        } else if (support == uint8(VoteType.Abstain)) {
+            proposalvote.abstainVotes += weight;
+        } else {
+            revert("GovernorVotingSimple: invalid value for enum VoteType");
+        }
+    }
 
-        return proposalId;
+    /**
+     * @dev Internal setter for the voting delay.
+     *
+     * Emits a {VotingDelaySet} event.
+     */
+    function _setVotingDelay(uint256 newVotingDelay) internal {
+        emit VotingDelaySet(_votingDelay, newVotingDelay);
+        _votingDelay = newVotingDelay;
+    }
+
+    /**
+     * @dev Internal setter for the voting period.
+     *
+     * Emits a {VotingPeriodSet} event.
+     */
+    function _setVotingPeriod(uint256 newVotingPeriod) internal {
+        // voting period must be at least one block long
+        require(newVotingPeriod > 0, "GovernorSettings: voting period too low");
+        emit VotingPeriodSet(_votingPeriod, newVotingPeriod);
+        _votingPeriod = newVotingPeriod;
+    }
+
+    /**
+     * @dev Internal setter for the proposal threshold.
+     *
+     * Emits a {ProposalThresholdSet} event.
+     */
+    function _setProposalThreshold(uint256 newProposalThreshold) internal {
+        emit ProposalThresholdSet(_proposalThreshold, newProposalThreshold);
+        _proposalThreshold = newProposalThreshold;
     }
 
     /**
@@ -645,7 +463,7 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas
-    ) internal virtual {
+    ) internal {
         string memory errorMessage = "Governor: call reverted without message";
         for (uint256 i = 0; i < targets.length; ++i) {
             (bool success, bytes memory returndata) = targets[i].call{value: values[i]}(calldatas[i]);
@@ -659,57 +477,18 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
      *
      * Emits a {IGovernor-ProposalCanceled} event.
      */
-    function _cancel(uint256 proposalId) internal virtual returns (uint256) {
+    function _cancel(uint256 proposalId) internal returns (uint256) {
         ProposalState status = state(proposalId);
 
         require(
             status != ProposalState.Canceled && status != ProposalState.Expired && status != ProposalState.Executed,
             "Governor: proposal not active"
         );
-        _proposals[proposalId].canceled = true;
+        proposals[proposalId].canceled = true;
 
         emit ProposalCanceled(proposalId);
 
         return proposalId;
-    }
-
-    /**
-     * @dev See {IGovernor-castVote}.
-     */
-    function castVote(uint256 proposalId, uint8 support) public virtual returns (uint256) {
-        address voter = _msgSender();
-        return _castVote(proposalId, voter, support, "");
-    }
-
-    /**
-     * @dev See {IGovernor-castVoteWithReason}.
-     */
-    function castVoteWithReason(
-        uint256 proposalId,
-        uint8 support,
-        string calldata reason
-    ) public virtual returns (uint256) {
-        address voter = _msgSender();
-        return _castVote(proposalId, voter, support, reason);
-    }
-
-    /**
-     * @dev See {IGovernor-castVoteBySig}.
-     */
-    function castVoteBySig(
-        uint256 proposalId,
-        uint8 support,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) public virtual returns (uint256) {
-        address voter = ECDSAUpgradeable.recover(
-            _hashTypedDataV4(keccak256(abi.encode(BALLOT_TYPEHASH, proposalId, support))),
-            v,
-            r,
-            s
-        );
-        return _castVote(proposalId, voter, support, "");
     }
 
     /**
@@ -723,16 +502,209 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
         address account,
         uint8 support,
         string memory reason
-    ) internal virtual returns (uint256) {
-        Proposal storage proposal = _proposals[proposalId];
+    ) internal returns (uint256) {
+        Proposal storage proposal = proposals[proposalId];
         require(state(proposalId) == ProposalState.Active, "Governor: vote not currently active");
 
-        uint256 weight = getVotes(account, proposal.voteStart.getDeadline());
+        uint256 weight = getVotesWithProposalType(proposal.typ, account, proposal.voteStart.getDeadline());
         _countVote(proposalId, account, support, weight);
 
         emit VoteCast(account, proposalId, support, weight, reason);
 
         return weight;
+    }
+
+    /**
+     * @dev See {IGovernor-COUNTING_MODE}.
+     */
+    // solhint-disable-next-line func-name-mixedcase
+    function COUNTING_MODE() external pure returns (string memory) {
+        return "support=bravo&quorum=for,abstain";
+    }
+
+    /**
+     * @dev Update the voting delay.
+     *
+     * Emits a {VotingDelaySet} event.
+     */
+    function setVotingDelay(uint256 newVotingDelay) external onlyOwner {
+        _setVotingDelay(newVotingDelay);
+    }
+
+    /**
+     * @dev Update the voting period.
+     *
+     * Emits a {VotingPeriodSet} event.
+     */
+    function setVotingPeriod(uint256 newVotingPeriod) external onlyOwner {
+        _setVotingPeriod(newVotingPeriod);
+    }
+
+    /**
+     * @dev Update the proposal threshold.
+     *
+     * Emits a {ProposalThresholdSet} event.
+     */
+    function setProposalThreshold(uint256 newProposalThreshold) external onlyOwner {
+        _setProposalThreshold(newProposalThreshold);
+    }
+
+    /**
+     * @dev Function to receive ETH that will be handled by the governor (disabled if executor is a third party contract)
+     */
+    receive() external payable {
+        require(_executor() == address(this));
+    }
+
+    function _createProposal(
+        uint256 index,
+        uint256 proposalId,
+        ProposalType proposalType,
+        string memory title,
+        string memory data,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas
+    ) private {
+        uint64 snapshot = block.number.toUint64() + votingDelay().toUint64();
+        uint64 deadline = snapshot + votingPeriod().toUint64();
+
+        Proposal storage proposal = proposals[proposalId];
+
+        proposal.typ = proposalType;
+        proposal.id = proposalId;
+        proposal.proposer = msg.sender;
+        proposal.voteStart.setDeadline(snapshot);
+        proposal.voteEnd.setDeadline(deadline);
+        proposal.targets = targets;
+        proposal.values = values;
+        proposal.calldatas = calldatas;
+
+        emit ProposalCreated(index, proposalId, proposalType, _msgSender(), snapshot, deadline, title, data);
+    }
+
+    /**
+     * @dev Submit a proposal
+     */
+    function propose(
+        ProposalType proposalType,
+        string memory title,
+        string memory data,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas
+    ) external returns (uint256) {
+        require(
+            getVotes(msg.sender, block.number - 1) >= proposalThreshold(),
+            "Governor: proposer votes below proposal threshold"
+        );
+
+        uint256 proposalId = uint256(keccak256(abi.encode(title, targets, values, calldatas, keccak256(bytes(data)))));
+
+        require(targets.length == values.length, "Governor: invalid proposal length");
+        require(targets.length == calldatas.length, "Governor: invalid proposal length");
+        require(targets.length > 0, "Governor: empty proposal and not a draft");
+
+        require(proposals[proposalId].voteStart.isUnset(), "Governor: proposal already exists");
+
+        uint256 index = proposalCount++;
+        _proposalsIdByIndex[index] = proposalId;
+
+        _createProposal(index, proposalId, proposalType, title, data, targets, values, calldatas);
+
+        return proposalId;
+    }
+
+    /**
+     * @dev Submit a draft proposal
+     */
+    function proposeDraft(
+        ProposalType proposalType,
+        string memory title,
+        string memory data
+    ) external returns (uint256) {
+        require(
+            getVotes(msg.sender, block.number - 1) >= proposalThreshold(),
+            "Governor: proposer votes below proposal threshold"
+        );
+
+        uint256 proposalId = uint256(keccak256(abi.encode("draft", title, keccak256(bytes(data)))));
+
+        Proposal storage draftProposal = proposals[proposalId];
+        require(draftProposal.voteStart.isUnset(), "Governor: proposal already exists");
+
+        uint256 index = draftProposalCount++;
+        _draftProposalsIdByIndex[index] = proposalId;
+
+        _createProposal(
+            index,
+            proposalId,
+            proposalType,
+            title,
+            data,
+            new address[](0),
+            new uint256[](0),
+            new bytes[](0)
+        );
+
+        return proposalId;
+    }
+
+    /**
+     * @dev See {IGovernor-execute}.
+     */
+    function execute(uint256 proposalId) external payable returns (uint256) {
+        ProposalState status = state(proposalId);
+        require(
+            status == ProposalState.Succeeded || status == ProposalState.Queued,
+            "Governor: proposal not successful"
+        );
+        proposals[proposalId].executed = true;
+
+        emit ProposalExecuted(proposalId);
+
+        _execute(proposals[proposalId].targets, proposals[proposalId].values, proposals[proposalId].calldatas);
+
+        return proposalId;
+    }
+
+    /**
+     * @dev See {IGovernor-castVote}.
+     */
+    function castVote(uint256 proposalId, uint8 support) external returns (uint256) {
+        address voter = _msgSender();
+        return _castVote(proposalId, voter, support, "");
+    }
+
+    /**
+     * @dev See {IGovernor-castVoteWithReason}.
+     */
+    function castVoteWithReason(
+        uint256 proposalId,
+        uint8 support,
+        string calldata reason
+    ) external returns (uint256) {
+        address voter = _msgSender();
+        return _castVote(proposalId, voter, support, reason);
+    }
+
+    /**
+     * @dev See {IGovernor-castVoteBySig}.
+     */
+    function castVoteBySig(
+        uint256 proposalId,
+        uint8 support,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256) {
+        address voter = ECDSAUpgradeable.recover(
+            _hashTypedDataV4(keccak256(abi.encode(BALLOT_TYPEHASH, proposalId, support))),
+            v,
+            r,
+            s
+        );
+        return _castVote(proposalId, voter, support, "");
     }
 
     /**
@@ -745,15 +717,66 @@ contract MelosGovernorV1 is Initializable, ContextUpgradeable, ERC165Upgradeable
         address target,
         uint256 value,
         bytes calldata data
-    ) external virtual onlyGovernance {
+    ) external onlyOwner {
         AddressUpgradeable.functionCallWithValue(target, data, value);
     }
 
     /**
-     * @dev Address through which the governor executes action. Will be overloaded by module that execute actions
-     * through another contract such as a timelock.
+     * @dev Changes the quorum numerator.
+     *
+     * Emits a {QuorumNumeratorUpdated} event.
+     *
+     * Requirements:
+     *
+     * - New numerator must be smaller or equal to the denominator.
      */
-    function _executor() internal view virtual returns (address) {
-        return address(this);
+    function _updateQuorumNumerator(ProposalType proposalType, uint256 newQuorumNumerator) internal {
+        require(
+            newQuorumNumerator <= quorumDenominator(),
+            "GovernorVotesQuorumFraction: quorumNumerator over quorumDenominator"
+        );
+
+        uint256 oldQuorumNumerator = QUORUM_NUMERATORS[uint256(proposalType)];
+        QUORUM_NUMERATORS[uint256(proposalType)] = newQuorumNumerator;
+
+        emit QuorumNumeratorUpdated(proposalType, oldQuorumNumerator, newQuorumNumerator);
+    }
+
+    /**
+     * @dev Changes the quorum numerator.
+     *
+     * Emits a {QuorumNumeratorUpdated} event.
+     *
+     * Requirements:
+     *
+     * - Must be called through a governance proposal.
+     * - New numerator must be smaller or equal to the denominator.
+     */
+    function updateQuorumNumerator(ProposalType proposalType, uint256 newQuorumNumerator) external onlyOwner {
+        _updateQuorumNumerator(proposalType, newQuorumNumerator);
+    }
+
+    /**
+     * @dev Changes the `LEVEL_THERSHOLD`
+     */
+    function updateLevelThersHold(MemberLevel level, uint256 newThershold) external onlyOwner {
+        uint256 oldThershold = LEVEL_THERSHOLD[uint256(level)];
+        LEVEL_THERSHOLD[uint256(level)] = newThershold;
+
+        emit LevelThersholdUpdated(level, oldThershold, newThershold);
+    }
+
+    /**
+     * @dev Changes the `WEIGHTS_WITH_LEVEL_PROPOSAL`
+     */
+    function updateLevelWithProposalType(
+        MemberLevel level,
+        ProposalType proposalType,
+        uint256 newWeight
+    ) external onlyOwner {
+        uint256 oldWeight = WEIGHTS_WITH_LEVEL_PROPOSAL[uint256(level)][uint256(proposalType)];
+        WEIGHTS_WITH_LEVEL_PROPOSAL[uint256(level)][uint256(proposalType)] = newWeight;
+
+        emit WeightsWithLevelProposalUpdated(level, proposalType, oldWeight, newWeight);
     }
 }

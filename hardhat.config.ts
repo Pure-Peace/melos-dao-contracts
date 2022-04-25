@@ -30,6 +30,8 @@ const config = {
   },
   namedAccounts: {
     deployer: 0,
+    user1: 1,
+    user2: 2
   },
   networks: {
     hardhat: {

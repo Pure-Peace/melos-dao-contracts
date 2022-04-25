@@ -19,7 +19,7 @@ import {
   ZERO_ADDRESS,
 } from './constants';
 
-import { VoteMelos, MelosGovernorV1, ERC20Burnable } from '../typechain'
+import { VoteMelos, MelosGovernorV1, ERC20Burnable } from '../typechain';
 
 import NETWORK_DEPLOY_CONFIG, { DeployConfig } from '../deploy.config';
 
@@ -30,7 +30,7 @@ const { deploy: _dep } = hre.deployments;
 
 const BASE_PATH = `./deployments/${hre.network.name}`;
 
-const IS_TESTNET = !['bsc', 'mainnet'].includes(hre.network.name)
+const IS_TESTNET = !['bsc', 'mainnet'].includes(hre.network.name);
 
 let __DEPLOY_CONFIG: DeployConfig;
 export function deployConfig() {
@@ -136,11 +136,11 @@ export async function tryGetContractForEnvironment<T extends Contract>(
     const deployment = JSON.parse(
       fs.readFileSync(path.join(BASE_PATH, `${contractName}.json`)).toString()
     );
-    result.contract = ((await hre.ethers.getContractAt(
+    result.contract = (await hre.ethers.getContractAt(
       deployment.abi,
       deployment.address,
       deployer
-    )) as unknown) as T;
+    )) as unknown as T;
     return result;
   } catch (err2) {
     result.err = err2;
@@ -169,6 +169,10 @@ export async function getContractAt<T extends Contract>(
       realSigner
     ) as Promise<T>;
   }
+}
+
+export function toTokenAmount(amount: number) {
+  return BigNumber.from(amount).mul(BigNumber.from(10).pow(18));
 }
 
 export async function getContractFromEnvOrPrompts<T extends Contract>(
@@ -273,19 +277,23 @@ export async function deployBeaconProxy(
 }
 
 export async function getMelosTokenAddress() {
-  const melosAddr = IS_TESTNET ?
-    (await getContractForEnvironment<Contract>(hre, 'TestMelos')).address :
-    (deployConfig().melosToken || '');
-  console.log('melosAddr: ', melosAddr)
-  return melosAddr
+  const melosAddr = IS_TESTNET
+    ? (await getContractForEnvironment<Contract>(hre, 'TestMelos')).address
+    : deployConfig().melosToken || '';
+  console.log('melosAddr: ', melosAddr);
+  return melosAddr;
 }
 
 export async function getDeployedContracts(deployer: SignerWithAddress) {
   console.log('\n>>>>>>>>> Getting deployed contracts...\n');
 
-  const MelosToken = IS_TESTNET ?
-    await getContractForEnvironment<ERC20Burnable>(hre, 'TestMelos', deployer) :
-    await getContractAt<ERC20Burnable>('TestMelos', deployConfig().melosToken as any as string, deployer);
+  const MelosToken = IS_TESTNET
+    ? await getContractForEnvironment<ERC20Burnable>(hre, 'TestMelos', deployer)
+    : await getContractAt<ERC20Burnable>(
+      'TestMelos',
+      deployConfig().melosToken as any as string,
+      deployer
+    );
 
   const VoteMelos = await getContractForEnvironment<VoteMelos>(
     hre,
@@ -332,6 +340,7 @@ export async function tryInitializeUpgradeableContract<T extends Contract>(
     await contract.callStatic.initialize(...initializeArgs);
   } catch (err) {
     console.log('Already initialized or initialize error');
+    return;
   }
 
   console.log('Initializing...');
@@ -342,11 +351,8 @@ export async function deployAndSetupContracts() {
   const { deployer, deploy } = await setup();
 
   if (IS_TESTNET) {
-    await deploy('TestMelos', 'TestMelos')
+    await deploy('TestMelos', 'TestMelos');
   }
-
-  await deploy('VoteMelos', 'VoteMelos')
-  await deploy('MelosGovernorV1', 'MelosGovernorV1')
 
   const implDeployments = await deployImpl(deploy, UPGRADEABLE_CONTRACTS);
   const upBeaconDeployments = await deployUpBeacon(
@@ -360,10 +366,11 @@ export async function deployAndSetupContracts() {
     upBeaconDeployments
   );
 
-  const { VoteMelos, MelosGovernorV1 } = await getDeployedContracts(deployer)
+  const { VoteMelos, MelosGovernorV1 } = await getDeployedContracts(deployer);
 
-  console.log('initializing...')
-  await tryInitializeUpgradeableContract(VoteMelos, [await getMelosTokenAddress()])
-  await tryInitializeUpgradeableContract(MelosGovernorV1, [VoteMelos.address])
-
+  console.log('initializing...');
+  await tryInitializeUpgradeableContract(VoteMelos, [
+    await getMelosTokenAddress(),
+  ]);
+  await tryInitializeUpgradeableContract(MelosGovernorV1, [VoteMelos.address]);
 }
