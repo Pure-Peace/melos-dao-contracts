@@ -55,5 +55,15 @@ describe('TEST VOTE MELOS', function () {
 
     expect(await VoteMelos.balanceOf(users.deployer.address), 'withdraw failed').to.equal(depositValue.sub(depositValue))
   });
+
+  it('deposit testing', async function () {
+    const { users, TestMelos, VoteMelos } = await setup();
+
+    await TestMelos.approve(VoteMelos.address, UINT256_MAX)
+
+    await VoteMelos.depositFor(users.deployer.address, toTokenAmount(1000))
+    await VoteMelos.depositFor(users.deployer.address, toTokenAmount(100))
+    await VoteMelos.depositFor(users.deployer.address, toTokenAmount(100))
+  });
 });
 

@@ -256,7 +256,7 @@ contract VoteMelos is
         if (oldBalance == newBlance) return;
         if ((oldBalance < MIN_HOLD) && newBlance >= MIN_HOLD) {
             _writeCheckpoint(_votersCheckpoints, _add, 1);
-        } else {
+        } else if ((oldBalance >= MIN_HOLD) && newBlance < MIN_HOLD) {
             _writeCheckpoint(_votersCheckpoints, _subtract, 1);
         }
     }
