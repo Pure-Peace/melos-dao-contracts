@@ -117,7 +117,7 @@ contract vMelosStaking is OwnableUpgradeable {
         emit Deposit(msg.sender, pool, amount, block.timestamp);
     }
 
-    function upgrade(Pool new_pool) external {
+    function prolongTo(Pool new_pool) external {
         require(!paused, "paused");
         assert(uint256(new_pool) <= 3); //optional
         address user = msg.sender;
@@ -138,7 +138,7 @@ contract vMelosStaking is OwnableUpgradeable {
         emit UpgradePool(user, old_pool, new_pool, block.timestamp);
     }
 
-    function exitPool() external {
+    function withdraw() external {
         address user = msg.sender;
         uint256 amount = userInfos[user].amounts;
         // must deposit
@@ -161,7 +161,7 @@ contract vMelosStaking is OwnableUpgradeable {
     }
 
     // re deposit after end
-    function reDeposit(Pool pool) external {
+    function redeposit(Pool pool) external {
         address user = msg.sender;
         UserInfo memory info = userInfos[user];
         require(info.amounts > 0, "not deposited");
@@ -304,6 +304,7 @@ contract vMelosStaking is OwnableUpgradeable {
         }
     }
 
+    // get user reward
     function getUserRewards(address user) external view returns (uint256) {
         return _getUserRewards(user, block.timestamp);
     }
@@ -385,12 +386,34 @@ contract vMelosStaking is OwnableUpgradeable {
     }
 
     // get all deposit amounts
-    function getAllDepositAmounts() public view returns (uint256 result) {
+    function getTotalLockAmounts() public view returns (uint256 result) {
         result =
             poolInfos[Pool.ONE].amounts +
             poolInfos[Pool.THREE].amounts +
             poolInfos[Pool.SIX].amounts +
             poolInfos[Pool.TWELVE].amounts;
+    }
+
+    function getAverageLockTime() public view returns (uint256 avgTime) {
+        uint256 weightedTotal = 0;
+        uint256 total = 0;
+        PoolInfo storage p1 = poolInfos[Pool.ONE];
+        total += p1.amounts;
+        weightedTotal += p1.amounts * p1.period;
+
+        PoolInfo storage p3 = poolInfos[Pool.THREE];
+        total += p3.amounts;
+        weightedTotal += p3.amounts * p3.period;
+
+        PoolInfo storage p6 = poolInfos[Pool.SIX];
+        total += p6.amounts;
+        weightedTotal += p6.amounts * p6.period;
+
+        PoolInfo storage p12 = poolInfos[Pool.TWELVE];
+        total += p12.amounts;
+        weightedTotal += p12.amounts * p12.period;
+
+        avgTime = weightedTotal / total;
     }
 
     function pause() external onlyOwner {

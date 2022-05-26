@@ -4,7 +4,7 @@ pragma solidity =0.8.4;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract vMelosRewardClaim is Ownable {
+contract vMelosRewards is Ownable {
     IERC20 public melos;
     address public staking;
     uint256 public rewardTime;
@@ -27,7 +27,7 @@ contract vMelosRewardClaim is Ownable {
         rewardTime = timestamp;
     }
 
-    function withdrawMelos(uint256 amount) external onlyOwner {
+    function withdraw(uint256 amount) external onlyOwner {
         melos.transfer(msg.sender, amount);
     }
 }
