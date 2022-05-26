@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.7;
+pragma solidity =0.8.4;
 
 import {IGovernorUpgradeable} from "@openzeppelin/contracts-upgradeable/governance/IGovernorUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -15,7 +15,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 
-import {IVoteMelos} from "./IVoteMelos.sol";
+import {IVMelos} from "./IVMelos.sol";
 
 contract MelosGovernorV1 is
     Initializable,
@@ -105,7 +105,7 @@ contract MelosGovernorV1 is
 
     mapping(uint256 => ProposalVote) private _proposalVotes;
 
-    IVoteMelos public vMelos;
+    IVMelos public vMelos;
 
     /**
      * @dev Emitted when a proposal is created.
@@ -160,7 +160,7 @@ contract MelosGovernorV1 is
         _;
     }
 
-    function initialize(IVoteMelos _voteMelos) public initializer {
+    function initialize(IVMelos _voteMelos) public initializer {
         __Governor_init("MelosGovernor");
         _setVotingDelay(
             57600 /* 57600 block: 2 days * 86400 / 3s (block time) */

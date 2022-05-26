@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { HardhatUserConfig } from 'hardhat/types';
+import {HardhatUserConfig} from 'hardhat/types';
 import 'hardhat-deploy';
 import '@nomiclabs/hardhat-ethers';
 import '@nomiclabs/hardhat-waffle';
@@ -11,7 +11,7 @@ import 'solidity-coverage';
 import 'hardhat-docgen';
 import 'hardhat-abi-exporter';
 //import "@atixlabs/hardhat-time-n-mine";
-import { node_url, accounts } from './utils/network';
+import {node_url, accounts} from './utils/network';
 
 // While waiting for hardhat PR: https://github.com/nomiclabs/hardhat/pull/1542
 if (process.env.HARDHAT_FORK) {
@@ -20,7 +20,7 @@ if (process.env.HARDHAT_FORK) {
 
 const config = {
   solidity: {
-    version: '0.8.13',
+    version: '0.8.4',
     settings: {
       optimizer: {
         enabled: true,
@@ -31,7 +31,7 @@ const config = {
   namedAccounts: {
     deployer: 0,
     user1: 1,
-    user2: 2
+    user2: 2,
   },
   networks: {
     hardhat: {
@@ -41,12 +41,12 @@ const config = {
       accounts: accounts(process.env.HARDHAT_FORK),
       forking: process.env.HARDHAT_FORK
         ? {
-          // TODO once PR merged : network: process.env.HARDHAT_FORK,
-          url: node_url(process.env.HARDHAT_FORK),
-          blockNumber: process.env.HARDHAT_FORK_NUMBER
-            ? parseInt(process.env.HARDHAT_FORK_NUMBER)
-            : undefined,
-        }
+            // TODO once PR merged : network: process.env.HARDHAT_FORK,
+            url: node_url(process.env.HARDHAT_FORK),
+            blockNumber: process.env.HARDHAT_FORK_NUMBER
+              ? parseInt(process.env.HARDHAT_FORK_NUMBER)
+              : undefined,
+          }
         : undefined,
     },
     localhost: {

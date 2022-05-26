@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-interface IVoteMelos {
+interface IVMelos {
     /**
      * @dev Emitted when an account changes their delegate.
      */
@@ -57,4 +57,14 @@ interface IVoteMelos {
         bytes32 r,
         bytes32 s
     ) external;
+
+    /**
+     * @dev Allow a user to deposit underlying tokens and mint the corresponding number of wrapped tokens.
+     */
+    function depositFor(address account, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Allow a user to burn a number of wrapped tokens and withdraw the corresponding number of underlying tokens.
+     */
+    function withdrawTo(address account, uint256 amount) external returns (bool);
 }

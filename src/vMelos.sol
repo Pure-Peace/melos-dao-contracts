@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.7;
+pragma solidity =0.8.4;
 
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {ERC20SnapshotUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20SnapshotUpgradeable.sol";
@@ -11,16 +11,13 @@ import {SafeCastUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/mat
 import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
 import {ECDSAUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol";
 
-import {TransferHelper} from "./lib/TransferHelper.sol";
-
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+import {IVMelos} from "./IVMelos.sol";
 
-import {IVoteMelos} from "./IVoteMelos.sol";
-
-contract VoteMelos is
+contract vMelos is
     Initializable,
-    IVoteMelos,
+    IVMelos,
     ERC20Upgradeable,
     ERC20SnapshotUpgradeable,
     OwnableUpgradeable,
@@ -33,7 +30,7 @@ contract VoteMelos is
 
     uint256 public constant MIN_HOLD = 1000 ether;
 
-    address public innerToken;
+    address public staking;
 
     bytes32 private constant _DELEGATION_TYPEHASH =
         keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
@@ -43,13 +40,27 @@ contract VoteMelos is
     Checkpoint[] private _totalSupplyCheckpoints;
     Checkpoint[] private _votersCheckpoints;
 
-    function initialize(address _innerToken) public initializer {
+    event ChangeStake(address indexed from, address indexed to);
+
+    function __VoteMelos_init(address _staking) public initializer {
         __ERC20_init("VOTE MELOS", "vMELOS");
         __ERC20Snapshot_init();
         __Ownable_init();
         __ERC20Permit_init("VOTE MELOS");
 
-        innerToken = _innerToken;
+        require(_staking != address(0));
+        staking = _staking;
+    }
+
+    modifier onlyStake() {
+        require(msg.sender == staking, "only stake contract");
+        _;
+    }
+
+    function changeStake(address _staking) external onlyStake {
+        require(_staking != address(0));
+        emit ChangeStake(staking, _staking);
+        staking = _staking;
     }
 
     /**
@@ -69,14 +80,14 @@ contract VoteMelos is
     /**
      * @dev Get the address `account` is currently delegating to.
      */
-    function delegates(address account) public view virtual returns (address) {
+    function delegates(address account) public view override returns (address) {
         return _delegates[account];
     }
 
     /**
      * @dev Gets the current votes balance for `account`
      */
-    function getVotes(address account) public view virtual returns (uint256) {
+    function getVotes(address account) public view override returns (uint256) {
         uint256 pos = _checkpoints[account].length;
         return pos == 0 ? 0 : _checkpoints[account][pos - 1].votes;
     }
@@ -88,7 +99,7 @@ contract VoteMelos is
      *
      * - `blockNumber` must have been already mined
      */
-    function getPastVotes(address account, uint256 blockNumber) public view virtual returns (uint256) {
+    function getPastVotes(address account, uint256 blockNumber) public view override returns (uint256) {
         require(blockNumber < block.number, "ERC20Votes: block not yet mined");
         return _checkpointsLookup(_checkpoints[account], blockNumber);
     }
@@ -101,7 +112,7 @@ contract VoteMelos is
      *
      * - `blockNumber` must have been already mined
      */
-    function getPastTotalSupply(uint256 blockNumber) public view virtual returns (uint256) {
+    function getPastTotalSupply(uint256 blockNumber) public view override returns (uint256) {
         require(blockNumber < block.number, "ERC20Votes: block not yet mined");
         return _checkpointsLookup(_totalSupplyCheckpoints, blockNumber);
     }
@@ -146,7 +157,7 @@ contract VoteMelos is
     /**
      * @dev Delegate votes from the sender to `delegatee`.
      */
-    function delegate(address delegatee) public virtual {
+    function delegate(address delegatee) public override {
         _delegate(_msgSender(), delegatee);
     }
 
@@ -160,7 +171,7 @@ contract VoteMelos is
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public virtual {
+    ) public override {
         require(block.timestamp <= expiry, "ERC20Votes: signature expired");
         address signer = ECDSAUpgradeable.recover(
             _hashTypedDataV4(keccak256(abi.encode(_DELEGATION_TYPEHASH, delegatee, nonce, expiry))),
@@ -293,8 +304,7 @@ contract VoteMelos is
     /**
      * @dev Allow a user to deposit underlying tokens and mint the corresponding number of wrapped tokens.
      */
-    function depositFor(address account, uint256 amount) public virtual returns (bool) {
-        TransferHelper.safeTransferFrom(innerToken, _msgSender(), address(this), amount);
+    function depositFor(address account, uint256 amount) public override onlyStake returns (bool) {
         _mint(account, amount);
         return true;
     }
@@ -302,9 +312,8 @@ contract VoteMelos is
     /**
      * @dev Allow a user to burn a number of wrapped tokens and withdraw the corresponding number of underlying tokens.
      */
-    function withdrawTo(address account, uint256 amount) public virtual returns (bool) {
-        _burn(_msgSender(), amount);
-        TransferHelper.safeTransfer(innerToken, account, amount);
+    function withdrawTo(address account, uint256 amount) public override onlyStake returns (bool) {
+        _burn(account, amount);
         return true;
     }
 
@@ -322,6 +331,7 @@ contract VoteMelos is
         address to,
         uint256 amount
     ) internal override(ERC20Upgradeable, ERC20SnapshotUpgradeable) {
+        require(from == address(0) || to == address(0), "no transfer");
         super._beforeTokenTransfer(from, to, amount);
     }
 }
