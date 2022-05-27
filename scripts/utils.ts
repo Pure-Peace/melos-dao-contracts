@@ -25,6 +25,7 @@ import {
   MelosGovernorV1,
   ERC20Burnable,
   VMelosStaking,
+  VMelosRewards,
 } from '../typechain';
 
 import NETWORK_DEPLOY_CONFIG, {DeployConfig} from '../deploy.config';
@@ -319,13 +320,19 @@ export async function getDeployedContracts(deployer: SignerWithAddress) {
     deployer
   );
 
+  const vMelosRewards = await getContractForEnvironment<VMelosRewards>(
+    hre,
+    'vMelosRewards',
+    deployer
+  );
+
   const vMelosStaking = await getContractForEnvironment<VMelosStaking>(
     hre,
     'vMelosStaking',
     deployer
   );
 
-  return {MelosToken, vMelos, MelosGovernorV1, vMelosStaking};
+  return {MelosToken, vMelos, MelosGovernorV1, vMelosRewards, vMelosStaking};
 }
 
 export async function deployUpgradeableContract(
@@ -373,6 +380,8 @@ export async function deployAndSetupContracts() {
     await deploy('MockMelos', 'MockMelos');
   }
 
+  await deploy('vMelosRewards', 'vMelosRewards');
+
   const implDeployments = await deployImpl(deploy, UPGRADEABLE_CONTRACTS);
   const upBeaconDeployments = await deployUpBeacon(
     deploy,
@@ -381,11 +390,23 @@ export async function deployAndSetupContracts() {
   );
   await deployBeaconProxy(deploy, PROXY_CONTRACTS, upBeaconDeployments);
 
-  const {vMelos, MelosGovernorV1} = await getDeployedContracts(deployer);
+  const {vMelos, MelosGovernorV1, vMelosStaking, vMelosRewards} =
+    await getDeployedContracts(deployer);
 
   console.log('initializing...');
-  await tryInitializeUpgradeableContract(vMelos, [
-    await getMelosTokenAddress(),
-  ]);
+
+  await tryInitializeUpgradeableContract(vMelos, [vMelosStaking.address]);
   await tryInitializeUpgradeableContract(MelosGovernorV1, [vMelos.address]);
+
+  // not upgradable, but has initialize()
+  await tryInitializeUpgradeableContract(vMelosRewards, [
+    vMelos.address,
+    vMelosStaking.address,
+  ]);
+
+  await tryInitializeUpgradeableContract(vMelosStaking, [
+    await getMelosTokenAddress(),
+    vMelos.address,
+    vMelosRewards.address,
+  ]);
 }

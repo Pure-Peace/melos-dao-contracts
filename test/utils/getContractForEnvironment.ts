@@ -1,11 +1,13 @@
 import {Signer, Contract} from 'ethers';
 import {HardhatRuntimeEnvironment} from 'hardhat/types';
 import {genGetContractWith} from './genHelpers';
+
 type THardHatLookupHelper<T> = (
   hre: HardhatRuntimeEnvironment,
   contractSlug: string,
   signer?: string | Signer | undefined
 ) => Promise<T>;
+
 function generateEnvNameContractDefHelper(
   networkToContract: {[networkName: string]: string},
   {abiName, lookupName}: {abiName?: string; lookupName?: string} = {}
@@ -51,6 +53,12 @@ const DEF_GET_CONTRACT_FOR_ENVIRONMENT = {
     {},
     {lookupName: 'MockMelos', abiName: 'MockMelos'}
   ),
+
+  vMelosRewards: generateEnvNameContractDefHelper(
+    {},
+    {lookupName: 'vMelosRewards', abiName: 'vMelosRewards'}
+  ),
+
   MelosGovernorV1: generateEnvNameContractDefHelper(
     {},
     {lookupName: 'MelosGovernorV1Proxy', abiName: 'MelosGovernorV1'}

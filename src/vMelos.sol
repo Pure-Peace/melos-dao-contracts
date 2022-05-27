@@ -42,7 +42,7 @@ contract vMelos is
 
     event ChangeStake(address indexed from, address indexed to);
 
-    function __VMelos_init(address _staking) public initializer {
+    function initialize(address _staking) public initializer {
         __ERC20_init("VOTE MELOS", "vMELOS");
         __ERC20Snapshot_init();
         __Ownable_init();
