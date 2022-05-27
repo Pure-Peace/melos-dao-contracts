@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 /* eslint-disable @typescript-eslint/no-var-requires */
 import hre from 'hardhat';
-import { BigNumber, Contract, ContractTransaction, Signer } from 'ethers';
-import { DeployResult } from 'hardhat-deploy/types';
+import {BigNumber, Contract, ContractTransaction, Signer} from 'ethers';
+import {DeployResult} from 'hardhat-deploy/types';
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
 
-import { GAS_LIMIT } from './constants';
-import { getContractForEnvironment } from '../test/utils/getContractForEnvironment';
-import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
+import {getContractForEnvironment} from '../test/utils/getContractForEnvironment';
+import {SignerWithAddress} from '@nomiclabs/hardhat-ethers/signers';
 
 import {
   ContractList,
@@ -17,16 +17,23 @@ import {
   UPBEACON_PREFIX,
   UPGRADEABLE_CONTRACTS,
   ZERO_ADDRESS,
+  GAS_LIMIT,
 } from './constants';
 
-import { VoteMelos, MelosGovernorV1, ERC20Burnable } from '../typechain';
+import {
+  VMelos,
+  MelosGovernorV1,
+  ERC20Burnable,
+  VMelosStaking,
+} from '../typechain';
 
-import NETWORK_DEPLOY_CONFIG, { DeployConfig } from '../deploy.config';
+import NETWORK_DEPLOY_CONFIG, {DeployConfig} from '../deploy.config';
 
-require('dotenv').config();
+dotenv.config();
+
 const prompts = require('prompts');
 
-const { deploy: _dep } = hre.deployments;
+const {deploy: _dep} = hre.deployments;
 
 const BASE_PATH = `./deployments/${hre.network.name}`;
 
@@ -48,7 +55,7 @@ export type DeployFunction = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args?: string[] | any[]
 ) => Promise<DeployResult>;
-export type Deployments = { [key: string]: DeployResult };
+export type Deployments = {[key: string]: DeployResult};
 
 export async function setup(): Promise<{
   accounts: SignerWithAddress[];
@@ -59,7 +66,9 @@ export async function setup(): Promise<{
     args?: any[]
   ) => Promise<DeployResult>;
 }> {
+  // console.log(hre.ethers.provider);
   const accounts = await hre.ethers.getSigners();
+
   const deployer = accounts[0];
   console.log('Network:', hre.network.name);
   console.log('Signer:', deployer.address);
@@ -89,9 +98,12 @@ export async function setup(): Promise<{
         from: deployer.address,
       });
       console.log(
-        `${deployResult.newlyDeployed ? '[New]' : '[Reused]'
-        } contract "${deployName}" ("${contractName}") deployed at "${deployResult.address
-        }" \n - tx: "${deployResult.transactionHash}" \n - gas: ${deployResult.receipt?.gasUsed
+        `${
+          deployResult.newlyDeployed ? '[New]' : '[Reused]'
+        } contract "${deployName}" ("${contractName}") deployed at "${
+          deployResult.address
+        }" \n - tx: "${deployResult.transactionHash}" \n - gas: ${
+          deployResult.receipt?.gasUsed
         } \n - deployer: "${deployer.address}"`
       );
       return deployResult;
@@ -117,8 +129,8 @@ export function waitContractCall(
 export async function tryGetContractForEnvironment<T extends Contract>(
   contractName: string,
   deployer: Signer
-): Promise<{ err: any; contract: T | undefined }> {
-  const result: { err: any; contract: T | undefined } = {
+): Promise<{err: any; contract: T | undefined}> {
+  const result: {err: any; contract: T | undefined} = {
     err: undefined,
     contract: undefined,
   };
@@ -179,16 +191,16 @@ export async function getContractFromEnvOrPrompts<T extends Contract>(
   {
     contractNameEnv,
     contractName,
-  }: { contractNameEnv: string; contractName?: string },
+  }: {contractNameEnv: string; contractName?: string},
   deployer: Signer
 ): Promise<T> {
   console.log(`\nGetting contract "${contractNameEnv}"...`);
-  const { contract, err } = await tryGetContractForEnvironment<T>(
+  const {contract, err} = await tryGetContractForEnvironment<T>(
     contractNameEnv,
     deployer
   );
   if (!contract) {
-    const { contractAddress } = await prompts({
+    const {contractAddress} = await prompts({
       type: 'text',
       name: 'contractAddress',
       message:
@@ -278,7 +290,7 @@ export async function deployBeaconProxy(
 
 export async function getMelosTokenAddress() {
   const melosAddr = IS_TESTNET
-    ? (await getContractForEnvironment<Contract>(hre, 'TestMelos')).address
+    ? (await getContractForEnvironment<Contract>(hre, 'MockMelos')).address
     : deployConfig().melosToken || '';
   console.log('melosAddr: ', melosAddr);
   return melosAddr;
@@ -288,16 +300,16 @@ export async function getDeployedContracts(deployer: SignerWithAddress) {
   console.log('\n>>>>>>>>> Getting deployed contracts...\n');
 
   const MelosToken = IS_TESTNET
-    ? await getContractForEnvironment<ERC20Burnable>(hre, 'TestMelos', deployer)
+    ? await getContractForEnvironment<ERC20Burnable>(hre, 'MockMelos', deployer)
     : await getContractAt<ERC20Burnable>(
-      'TestMelos',
-      deployConfig().melosToken as any as string,
-      deployer
-    );
+        'MockMelos',
+        deployConfig().melosToken as any as string,
+        deployer
+      );
 
-  const VoteMelos = await getContractForEnvironment<VoteMelos>(
+  const vMelos = await getContractForEnvironment<VMelos>(
     hre,
-    'VoteMelos',
+    'vMelos',
     deployer
   );
 
@@ -307,7 +319,13 @@ export async function getDeployedContracts(deployer: SignerWithAddress) {
     deployer
   );
 
-  return { MelosToken, VoteMelos, MelosGovernorV1 };
+  const vMelosStaking = await getContractForEnvironment<VMelosStaking>(
+    hre,
+    'vMelosStaking',
+    deployer
+  );
+
+  return {MelosToken, vMelos, MelosGovernorV1, vMelosStaking};
 }
 
 export async function deployUpgradeableContract(
@@ -329,7 +347,7 @@ export async function deployUpgradeableContract(
     'BeaconProxy',
     [upBeaconResult.address, []]
   );
-  return { implReuslt, upBeaconResult, proxyResult };
+  return {implReuslt, upBeaconResult, proxyResult};
 }
 
 export async function tryInitializeUpgradeableContract<T extends Contract>(
@@ -348,10 +366,11 @@ export async function tryInitializeUpgradeableContract<T extends Contract>(
 }
 
 export async function deployAndSetupContracts() {
-  const { deployer, deploy } = await setup();
+  console.log('setup...');
+  const {deployer, deploy} = await setup();
 
   if (IS_TESTNET) {
-    await deploy('TestMelos', 'TestMelos');
+    await deploy('MockMelos', 'MockMelos');
   }
 
   const implDeployments = await deployImpl(deploy, UPGRADEABLE_CONTRACTS);
@@ -360,17 +379,13 @@ export async function deployAndSetupContracts() {
     UPGRADEABLE_CONTRACTS,
     implDeployments
   );
-  const beaconProxyDeployments = await deployBeaconProxy(
-    deploy,
-    PROXY_CONTRACTS,
-    upBeaconDeployments
-  );
+  await deployBeaconProxy(deploy, PROXY_CONTRACTS, upBeaconDeployments);
 
-  const { VoteMelos, MelosGovernorV1 } = await getDeployedContracts(deployer);
+  const {vMelos, MelosGovernorV1} = await getDeployedContracts(deployer);
 
   console.log('initializing...');
-  await tryInitializeUpgradeableContract(VoteMelos, [
+  await tryInitializeUpgradeableContract(vMelos, [
     await getMelosTokenAddress(),
   ]);
-  await tryInitializeUpgradeableContract(MelosGovernorV1, [VoteMelos.address]);
+  await tryInitializeUpgradeableContract(MelosGovernorV1, [vMelos.address]);
 }

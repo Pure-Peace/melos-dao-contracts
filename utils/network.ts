@@ -1,7 +1,9 @@
-import 'dotenv/config';
 export function node_url(networkName: string): string {
+  console.log(networkName);
   if (networkName) {
     const uri = process.env['ETH_NODE_URI_' + networkName.toUpperCase()];
+    console.log(uri);
+
     if (uri && uri !== '') {
       return uri;
     }
@@ -25,6 +27,7 @@ export function node_url(networkName: string): string {
       `invalid uri or network not supported by node provider : ${uri}`
     );
   }
+
   return uri;
 }
 
@@ -44,12 +47,12 @@ export function getMnemonic(networkName?: string): string {
 }
 
 export function accounts(networkName?: string): any {
-  const privKeysStr = process.env['PRIV_KEYS_' + (networkName || "").toUpperCase()];
+  const privKeysStr =
+    process.env['PRIV_KEYS_' + (networkName || '').toUpperCase()];
   if (privKeysStr) {
-    const accs = privKeysStr.split(",");
-    console.log(accs);
+    const accs = privKeysStr.split(',');
+    // console.log(networkName, accs);
     return accs;
   }
-  return { mnemonic: getMnemonic(networkName), count: 50 };
+  return {mnemonic: getMnemonic(networkName), count: 50};
 }
-

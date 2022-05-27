@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import {HardhatUserConfig} from 'hardhat/types';
 import 'hardhat-deploy';
 import '@nomiclabs/hardhat-ethers';
@@ -8,9 +8,11 @@ import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
 import '@typechain/hardhat';
 import 'solidity-coverage';
-import 'hardhat-docgen';
+// import 'hardhat-docgen';
 import 'hardhat-abi-exporter';
 //import "@atixlabs/hardhat-time-n-mine";
+dotenv.config();
+
 import {node_url, accounts} from './utils/network';
 
 // While waiting for hardhat PR: https://github.com/nomiclabs/hardhat/pull/1542
@@ -64,30 +66,23 @@ const config = {
     mainnet: {
       url: node_url('mainnet'),
       accounts: accounts('mainnet'),
+      chainId: 1,
     },
     rinkeby: {
       url: node_url('rinkeby'),
       accounts: accounts('rinkeby'),
+      chainId: 4,
     },
-    kovan: {
-      url: node_url('kovan'),
-      accounts: accounts('kovan'),
-    },
-    goerli: {
-      url: node_url('goerli'),
-      accounts: accounts('goerli'),
-    },
-    ropsten: {
-      url: node_url('ropsten'),
-      accounts: accounts('ropsten'),
-    },
+
     bscTestnet: {
       url: node_url('bscTestnet'),
       accounts: accounts('bscTestnet'),
+      chainId: 97,
     },
     bsc: {
       url: node_url('bsc'),
       accounts: accounts('bsc'),
+      chainId: 56,
     },
   },
   etherscan: {

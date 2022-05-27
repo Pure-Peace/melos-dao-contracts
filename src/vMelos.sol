@@ -42,13 +42,13 @@ contract vMelos is
 
     event ChangeStake(address indexed from, address indexed to);
 
-    function __VoteMelos_init(address _staking) public initializer {
+    function __VMelos_init(address _staking) public initializer {
         __ERC20_init("VOTE MELOS", "vMELOS");
         __ERC20Snapshot_init();
         __Ownable_init();
         __ERC20Permit_init("VOTE MELOS");
 
-        require(_staking != address(0));
+        require(_staking != address(0), "null address");
         staking = _staking;
     }
 
@@ -58,7 +58,7 @@ contract vMelos is
     }
 
     function changeStake(address _staking) external onlyStake {
-        require(_staking != address(0));
+        require(_staking != address(0), "null address");
         emit ChangeStake(staking, _staking);
         staking = _staking;
     }

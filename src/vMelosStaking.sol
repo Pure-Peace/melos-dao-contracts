@@ -57,7 +57,7 @@ contract vMelosStaking is OwnableUpgradeable {
     event UpgradePool(address indexed user, Pool old_pool, Pool new_pool, uint256 timestamp);
     event EmergencyWithdraw(address indexed user, Pool indexed pool, uint256 amount);
 
-    function __MelosStake_init(
+    function __VMelosStaking_init(
         address _melos,
         address _vMelos,
         address _reward
