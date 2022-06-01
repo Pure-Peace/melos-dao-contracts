@@ -13,7 +13,7 @@ const toTokenAmount = (amount: BigNumberish, tokenDecimal: BigNumberish) => {
 const config: {[key: string]: DeployConfig} = {
   mainnet: {},
   rinkeby: {},
-  bsc_testnet: {
+  bscTestnet: {
     melosToken: '0xd8b9195bd7585e834de6f221ce5d80f27bde6a5d',
   },
   bsc: {

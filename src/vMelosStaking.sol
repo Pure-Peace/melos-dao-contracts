@@ -162,6 +162,8 @@ contract vMelosStaking is OwnableUpgradeable {
 
     // re deposit after end
     function redeposit(Pool pool) external {
+        require(!paused, "paused");
+
         address user = msg.sender;
         UserInfo memory info = userInfos[user];
         require(info.amounts > 0, "not deposited");

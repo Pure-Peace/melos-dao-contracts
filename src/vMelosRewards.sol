@@ -8,16 +8,14 @@ contract vMelosRewards is Ownable {
     IERC20 public melos;
     address public staking;
     uint256 public rewardTime;
+    uint256 public initialTime;
 
     function initialize(address _melos, address _staking) external onlyOwner {
         require(staking == address(0), "has inited");
         require(_melos != address(0) && _staking != address(0), "zero address");
+        initialTime = block.timestamp;
         melos = IERC20(_melos);
         staking = _staking;
-        melos.approve(staking, type(uint256).max);
-    }
-
-    function approve() external onlyOwner {
         melos.approve(staking, type(uint256).max);
     }
 

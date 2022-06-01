@@ -38,7 +38,7 @@ const {deploy: _dep} = hre.deployments;
 
 const BASE_PATH = `./deployments/${hre.network.name}`;
 
-const IS_TESTNET = !['bsc', 'mainnet'].includes(hre.network.name);
+const IS_TESTNET = !['bsc', 'bscTestnet', 'mainnet'].includes(hre.network.name);
 
 let __DEPLOY_CONFIG: DeployConfig;
 export function deployConfig() {
@@ -400,7 +400,7 @@ export async function deployAndSetupContracts() {
 
   // not upgradable, but has initialize()
   await tryInitializeUpgradeableContract(vMelosRewards, [
-    vMelos.address,
+    await getMelosTokenAddress(),
     vMelosStaking.address,
   ]);
 
