@@ -17,7 +17,7 @@ const config: {[key: string]: DeployConfig} = {
     melosToken: '0xd8b9195bd7585e834de6f221ce5d80f27bde6a5d',
   },
   bsc: {
-    melosToken: '',
+    melosToken: '0x3CC194Cb21E3B9d86dD516b4d870B82fAfb4C02E',
   },
 };
 

@@ -3,7 +3,6 @@ pragma solidity =0.8.4;
 
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IVMelos} from "./IVMelos.sol";
 
 interface IMelosRewards {
@@ -11,8 +10,6 @@ interface IMelosRewards {
 }
 
 contract vMelosStaking is OwnableUpgradeable {
-    using SafeERC20 for IERC20;
-
     IERC20 public melos;
     IVMelos public vMelos;
     address public melos_reward;
@@ -112,7 +109,7 @@ contract vMelosStaking is OwnableUpgradeable {
         }
 
         // 3 transfer token
-        melos.safeTransferFrom(msg.sender, address(this), amount);
+        melos.transferFrom(msg.sender, address(this), amount);
         // 4 mint mVelos
         vMelos.depositFor(msg.sender, amount);
         // 5 update amount
@@ -158,7 +155,7 @@ contract vMelosStaking is OwnableUpgradeable {
         userInfos[user].amounts -= amount;
         assert(userInfos[user].amounts == 0); // optional
         poolInfos[pool].amounts -= amount;
-        melos.safeTransfer(user, amount);
+        melos.transfer(user, amount);
         // burn vMelos
         vMelos.withdrawTo(user, amount);
         // check active user;

@@ -80,6 +80,7 @@ contract MelosGovernorV1 is
         mapping(address => bool) hasVoted;
     }
 
+    uint256 public constant MULTIPLIER = 10**18;
     uint256[] private LEVEL_THERSHOLD;
     uint256[][] private WEIGHTS_WITH_LEVEL_PROPOSAL;
     uint256[] private QUORUM_NUMERATORS;
@@ -166,7 +167,7 @@ contract MelosGovernorV1 is
             86400 /* 86400 block: 3 days * 86400 / 3s (block time) */
         );
         _setProposalThreshold(
-            300_000 * 10**18 /* 300,000 vMelos threshold */
+            300_000 * MULTIPLIER /* 300,000 vMelos threshold */
         );
         vMelos = _voteMelos;
 
@@ -229,14 +230,14 @@ contract MelosGovernorV1 is
         } else if (level == MemberLevel.Basic) {
             return 1 ether;
         } else {
-            return WEIGHTS_WITH_LEVEL_PROPOSAL[uint8(level) - 2][uint8(proposalType)] * 10**18;
+            return WEIGHTS_WITH_LEVEL_PROPOSAL[uint8(level) - 2][uint8(proposalType)] * MULTIPLIER;
         }
     }
 
     function getLevel(address account, uint256 blockNumber) public view returns (MemberLevel) {
         uint256 weight = getVotes(account, blockNumber);
         for (uint256 i = LEVEL_THERSHOLD.length; i > 1; i--) {
-            if (weight >= (LEVEL_THERSHOLD[i] * 10**18)) return MemberLevel(i);
+            if (weight >= (LEVEL_THERSHOLD[i - 1] * MULTIPLIER)) return MemberLevel(i - 1);
         }
         return MemberLevel.None;
     }
