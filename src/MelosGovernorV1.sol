@@ -238,7 +238,7 @@ contract MelosGovernorV1 is
 
     function getLevel(address account, uint256 blockNumber) public view returns (MemberLevel) {
         uint256 weight = getVotes(account, blockNumber);
-        for (uint256 i = LEVEL_THERSHOLD.length - 1; i >= 0; i--) {
+        for (uint256 i = LEVEL_THERSHOLD.length; i > 1; i--) {
             if (weight >= (LEVEL_THERSHOLD[i] * 10**18)) return MemberLevel(i);
         }
         return MemberLevel.None;
