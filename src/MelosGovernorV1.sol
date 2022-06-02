@@ -463,12 +463,15 @@ contract MelosGovernorV1 is
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas
-    ) internal {
+    ) internal returns (bytes[] memory) {
+        bytes[] memory results = new bytes[](targets.length);
         string memory errorMessage = "Governor: call reverted without message";
         for (uint256 i = 0; i < targets.length; ++i) {
             (bool success, bytes memory returndata) = targets[i].call{value: values[i]}(calldatas[i]);
             AddressUpgradeable.verifyCallResult(success, returndata, errorMessage);
+            results[i] = returndata;
         }
+        return results;
     }
 
     /**
@@ -653,7 +656,7 @@ contract MelosGovernorV1 is
     /**
      * @dev See {IGovernor-execute}.
      */
-    function execute(uint256 proposalId) external payable returns (uint256) {
+    function execute(uint256 proposalId) external payable returns (bytes[] memory) {
         ProposalState status = state(proposalId);
         require(
             status == ProposalState.Succeeded || status == ProposalState.Queued,
@@ -663,9 +666,7 @@ contract MelosGovernorV1 is
 
         emit ProposalExecuted(proposalId);
 
-        _execute(proposals[proposalId].targets, proposals[proposalId].values, proposals[proposalId].calldatas);
-
-        return proposalId;
+        return _execute(proposals[proposalId].targets, proposals[proposalId].values, proposals[proposalId].calldatas);
     }
 
     /**
