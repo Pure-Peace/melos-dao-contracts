@@ -409,23 +409,27 @@ contract vMelosStaking is OwnableUpgradeable {
     function getAverageLockTime() public view returns (uint256 avgTime) {
         uint256 weightedTotal = 0;
         uint256 total = 0;
-        PoolInfo storage p1 = poolInfos[Pool.ONE];
+        PoolInfo memory p1 = poolInfos[Pool.ONE];
         total += p1.amounts;
         weightedTotal += p1.amounts * p1.period;
 
-        PoolInfo storage p3 = poolInfos[Pool.THREE];
+        PoolInfo memory p3 = poolInfos[Pool.THREE];
         total += p3.amounts;
         weightedTotal += p3.amounts * p3.period;
 
-        PoolInfo storage p6 = poolInfos[Pool.SIX];
+        PoolInfo memory p6 = poolInfos[Pool.SIX];
         total += p6.amounts;
         weightedTotal += p6.amounts * p6.period;
 
-        PoolInfo storage p12 = poolInfos[Pool.TWELVE];
+        PoolInfo memory p12 = poolInfos[Pool.TWELVE];
         total += p12.amounts;
         weightedTotal += p12.amounts * p12.period;
 
-        avgTime = weightedTotal / total;
+        if (total == 0) {
+            avgTime = 0;
+        } else {
+            avgTime = weightedTotal / total;
+        }
     }
 
     function pause() external onlyOwner {
