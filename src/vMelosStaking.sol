@@ -77,6 +77,14 @@ contract vMelosStaking is OwnableUpgradeable {
         poolInfos[Pool.TWELVE] = PoolInfo(130, 360 days, 1, 0);
     }
 
+    // test
+    // function _initApy() internal {
+    //     poolInfos[Pool.ONE] = PoolInfo(30, 30 minutes, 12, 0);
+    //     poolInfos[Pool.THREE] = PoolInfo(50, 90 minutes, 4, 0);
+    //     poolInfos[Pool.SIX] = PoolInfo(90, 180 minutes, 2, 0);
+    //     poolInfos[Pool.TWELVE] = PoolInfo(130, 360 minutes, 1, 0);
+    // }
+
     ///////<<<<---------------  user interface  start  ----------->>>>>///////
     function deposit(Pool pool, uint256 amount) external {
         // 1 check condition
