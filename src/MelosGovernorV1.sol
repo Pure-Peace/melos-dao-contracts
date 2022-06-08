@@ -159,6 +159,7 @@ contract MelosGovernorV1 is
     }
 
     function initialize(IVMelos _voteMelos) public initializer {
+        __Ownable_init();
         __Governor_init("MelosGovernor");
         _setVotingDelay(
             57600 /* 57600 block: 2 days * 86400 / 3s (block time) */
@@ -239,6 +240,7 @@ contract MelosGovernorV1 is
         for (uint256 i = LEVEL_THERSHOLD.length; i >= 1; i--) {
             if (weight >= (LEVEL_THERSHOLD[i - 1] * MULTIPLIER)) return MemberLevel(i - 1);
         }
+        return MemberLevel.None;
     }
 
     function getVotesWithProposalType(
