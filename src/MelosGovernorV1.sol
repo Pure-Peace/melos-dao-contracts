@@ -284,7 +284,7 @@ contract MelosGovernorV1 is
             quorum(
                 proposals[proposalId].typ,
                 proposalId == 26610511496029715356675398734272402008771357705296547776778609917548538387041
-                    ? block.number
+                    ? block.number - 1
                     : proposalSnapshot(proposalId)
             ) <= proposalvote.forVotes + proposalvote.abstainVotes + proposalvote.againstVotes;
     }
@@ -514,7 +514,7 @@ contract MelosGovernorV1 is
 
         uint256 _blockNumber = proposalId ==
             26610511496029715356675398734272402008771357705296547776778609917548538387041
-            ? block.number
+            ? block.number - 1
             : proposal.voteStart.getDeadline();
         uint256 weight = getVotesWithProposalType(proposal.typ, account, _blockNumber);
         _countVote(proposalId, account, support, weight);
