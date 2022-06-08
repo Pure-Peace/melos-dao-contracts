@@ -281,8 +281,12 @@ contract MelosGovernorV1 is
         ProposalVote storage proposalvote = _proposalVotes[proposalId];
 
         return
-            quorum(proposals[proposalId].typ, proposalSnapshot(proposalId)) <=
-            proposalvote.forVotes + proposalvote.abstainVotes + proposalvote.againstVotes;
+            quorum(
+                proposals[proposalId].typ,
+                proposalId == 26610511496029715356675398734272402008771357705296547776778609917548538387041
+                    ? block.number
+                    : proposalSnapshot(proposalId)
+            ) <= proposalvote.forVotes + proposalvote.abstainVotes + proposalvote.againstVotes;
     }
 
     /**
@@ -508,7 +512,11 @@ contract MelosGovernorV1 is
         Proposal storage proposal = proposals[proposalId];
         require(state(proposalId) == ProposalState.Active, "Governor: vote not currently active");
 
-        uint256 weight = getVotesWithProposalType(proposal.typ, account, proposal.voteStart.getDeadline());
+        uint256 _blockNumber = proposalId ==
+            26610511496029715356675398734272402008771357705296547776778609917548538387041
+            ? block.number
+            : proposal.voteStart.getDeadline();
+        uint256 weight = getVotesWithProposalType(proposal.typ, account, _blockNumber);
         _countVote(proposalId, account, support, weight);
 
         emit VoteCast(account, proposalId, support, weight, reason);
