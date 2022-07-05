@@ -566,10 +566,12 @@ contract MelosGovernorV1 is
         string memory data,
         address[] memory targets,
         uint256[] memory values,
-        bytes[] memory calldatas
+        bytes[] memory calldatas,
+        uint256 __votingPeriod
     ) private {
+        require(__votingPeriod >= 86400 && __votingPeriod <= 201600, "VotingPeriod should be >= 3 days and <= 7 days");
         uint64 snapshot = block.number.toUint64() + votingDelay().toUint64();
-        uint64 deadline = snapshot + votingPeriod().toUint64();
+        uint64 deadline = snapshot + __votingPeriod.toUint64();
 
         Proposal storage proposal = proposals[proposalId];
 
@@ -594,7 +596,8 @@ contract MelosGovernorV1 is
         string memory data,
         address[] memory targets,
         uint256[] memory values,
-        bytes[] memory calldatas
+        bytes[] memory calldatas,
+        uint256 __votingPeriod
     ) external returns (uint256) {
         require(
             getVotes(msg.sender, block.number - 1) >= proposalThreshold(),
@@ -612,7 +615,7 @@ contract MelosGovernorV1 is
         uint256 index = proposalCount++;
         _proposalsIdByIndex[index] = proposalId;
 
-        _createProposal(index, proposalId, proposalType, title, data, targets, values, calldatas);
+        _createProposal(index, proposalId, proposalType, title, data, targets, values, calldatas, __votingPeriod);
 
         return proposalId;
     }
@@ -623,7 +626,8 @@ contract MelosGovernorV1 is
     function proposeDraft(
         ProposalType proposalType,
         string memory title,
-        string memory data
+        string memory data,
+        uint256 __votingPeriod
     ) external returns (uint256) {
         require(
             getVotes(msg.sender, block.number - 1) >= proposalThreshold(),
@@ -646,7 +650,8 @@ contract MelosGovernorV1 is
             data,
             new address[](0),
             new uint256[](0),
-            new bytes[](0)
+            new bytes[](0),
+            __votingPeriod
         );
 
         return proposalId;
